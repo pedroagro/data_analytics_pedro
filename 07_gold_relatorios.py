@@ -1,0 +1,80 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # StartupCRM | 07 | Camada Gold
+# MAGIC
+# MAGIC Cria as duas views analíticas solicitadas, utilizando a surrogate key como chave de relacionamento.
+
+# COMMAND ----------
+
+# MAGIC %run ./00_config_utils
+
+# COMMAND ----------
+
+spark.sql(f"""
+CREATE OR REPLACE VIEW {TABLES["gold_relatorio_usuario"]} AS
+WITH POST_POR_USUARIO AS (
+    SELECT
+        SRK_USR,
+        COUNT(SRK_POST) AS NUM_QTD_POST
+    FROM {TABLES["silver_fato_post"]}
+    GROUP BY SRK_USR
+),
+TODO_POR_USUARIO AS (
+    SELECT
+        SRK_USR,
+        COUNT(SRK_TODO) AS NUM_QTD_TODO,
+        SUM(CASE WHEN FLG_CONCLUIDO = TRUE THEN 1 ELSE 0 END) AS NUM_QTD_TODO_CONCLUIDO
+    FROM {TABLES["silver_fato_todo"]}
+    GROUP BY SRK_USR
+)
+SELECT
+    D.SRK_USR,
+    D.COD_USR,
+    D.NME_COMP_USR,
+    D.NME_CID,
+    D.NME_EMPRESA,
+    CAST(COALESCE(P.NUM_QTD_POST, 0) AS BIGINT) AS NUM_QTD_POST,
+    CAST(COALESCE(T.NUM_QTD_TODO, 0) AS BIGINT) AS NUM_QTD_TODO,
+    CAST(COALESCE(T.NUM_QTD_TODO_CONCLUIDO, 0) AS BIGINT) AS NUM_QTD_TODO_CONCLUIDO
+FROM {TABLES["silver_dim_usuario"]} D
+LEFT JOIN POST_POR_USUARIO P
+    ON D.SRK_USR = P.SRK_USR
+LEFT JOIN TODO_POR_USUARIO T
+    ON D.SRK_USR = T.SRK_USR
+WHERE D.COD_USR <> -1
+ORDER BY NUM_QTD_POST DESC, D.COD_USR ASC
+""")
+
+# COMMAND ----------
+
+spark.sql(f"""
+CREATE OR REPLACE VIEW {TABLES["gold_relatorio_cidade"]} AS
+WITH INDICADORES_CIDADE AS (
+    SELECT
+        D.NME_CID,
+        COUNT(DISTINCT D.SRK_USR) AS NUM_QTD_USR_DIST,
+        COUNT(T.SRK_TODO) AS NUM_QTD_TODO,
+        SUM(CASE WHEN T.FLG_CONCLUIDO = TRUE THEN 1 ELSE 0 END) AS NUM_QTD_TODO_CONCLUIDO
+    FROM {TABLES["silver_dim_usuario"]} D
+    LEFT JOIN {TABLES["silver_fato_todo"]} T
+        ON D.SRK_USR = T.SRK_USR
+    WHERE D.COD_USR <> -1
+    GROUP BY D.NME_CID
+)
+SELECT
+    NME_CID,
+    CAST(NUM_QTD_USR_DIST AS BIGINT) AS NUM_QTD_USR_DIST,
+    CAST(NUM_QTD_TODO AS BIGINT) AS NUM_QTD_TODO,
+    CAST(NUM_QTD_TODO_CONCLUIDO AS BIGINT) AS NUM_QTD_TODO_CONCLUIDO,
+    CAST(
+        CASE
+            WHEN NUM_QTD_TODO = 0 THEN 0
+            ELSE ROUND((NUM_QTD_TODO_CONCLUIDO * 100.0) / NUM_QTD_TODO, 2)
+        END
+        AS DECIMAL(7,2)
+    ) AS NUM_PCT_TODO_CONCLUIDO
+FROM INDICADORES_CIDADE
+ORDER BY NUM_PCT_TODO_CONCLUIDO DESC, NME_CID ASC
+""")
+
+print("Views Gold criadas com sucesso.")
