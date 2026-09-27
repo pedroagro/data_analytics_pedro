@@ -1,0 +1,26 @@
+{
+  "project_name": "aws_medallion_pipeline",
+  "source": {
+    "name": "orders_api",
+    "type": "REST_API"
+  },
+  "s3": {
+    "landing_prefix": "landing/orders",
+    "raw_prefix": "raw/orders",
+    "bronze_prefix": "bronze/orders",
+    "silver_prefix": "silver/orders",
+    "gold_prefix": "gold/orders",
+    "diamond_prefix": "diamond/orders"
+  },
+  "processing": {
+    "format": "parquet",
+    "compression": "snappy"
+  },
+  "diamond": {
+    "partition_columns": [
+      "year",
+      "month",
+      "day"
+    ]
+  }
+}
