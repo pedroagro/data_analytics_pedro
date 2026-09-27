@@ -1,5 +1,6 @@
 import argparse
 
+from pyspark.sql import DataFrame
 from pyspark.sql import SparkSession
 from pyspark.sql import Window
 from pyspark.sql import functions as F
@@ -35,18 +36,19 @@ def create_spark_session():
     )
 
 
-def main():
-    args = get_args()
+def transform_bronze_to_silver(
+    bronze_df: DataFrame
+) -> DataFrame:
+    """
+    Aplica as regras de negócio da camada Silver.
 
-    spark = create_spark_session()
-
-    print(f"Lendo camada Bronze: {args.input}")
-
-    bronze_df = spark.read.parquet(args.input)
-
-    print(
-        f"Registros encontrados na Bronze: {bronze_df.count()}"
-    )
+    Responsabilidades:
+    1. Remover registros inválidos
+    2. Eliminar duplicidades
+    3. Padronizar status
+    4. Criar atributos analíticos
+    5. Adicionar auditoria
+    """
 
     dedup_window = (
         Window
@@ -59,7 +61,6 @@ def main():
     silver_df = (
         bronze_df
 
-        # Regra de negócio
         .filter(
             F.col("amount").isNotNull()
         )
@@ -72,7 +73,10 @@ def main():
             F.col("customer_id").isNotNull()
         )
 
-        # Deduplicação
+        .filter(
+            F.col("order_id").isNotNull()
+        )
+
         .withColumn(
             "row_number",
             F.row_number().over(dedup_window)
@@ -84,7 +88,6 @@ def main():
 
         .drop("row_number")
 
-        # Padronização de status
         .withColumn(
             "order_status",
             F.when(
@@ -102,11 +105,14 @@ def main():
                 "CANCELLED"
             )
             .otherwise(
-                F.col("order_status")
+                F.upper(
+                    F.trim(
+                        F.col("order_status")
+                    )
+                )
             )
         )
 
-        # Colunas analíticas
         .withColumn(
             "order_date",
             F.to_date("order_timestamp")
@@ -122,17 +128,44 @@ def main():
             F.month("order_timestamp")
         )
 
-        # Auditoria
         .withColumn(
             "silver_processed_at",
             F.current_timestamp()
         )
     )
 
+    return silver_df
+
+
+def main():
+    args = get_args()
+
+    spark = create_spark_session()
+
+    print(
+        f"Lendo camada Bronze: {args.input}"
+    )
+
+    bronze_df = spark.read.parquet(
+        args.input
+    )
+
+    total_bronze = bronze_df.count()
+
+    print(
+        f"Registros encontrados na Bronze: "
+        f"{total_bronze}"
+    )
+
+    silver_df = transform_bronze_to_silver(
+        bronze_df
+    )
+
     total_silver = silver_df.count()
 
     print(
-        f"Registros válidos na Silver: {total_silver}"
+        f"Registros válidos na Silver: "
+        f"{total_silver}"
     )
 
     (
@@ -143,7 +176,8 @@ def main():
     )
 
     print(
-        f"Dados gravados na Silver: {args.output}"
+        f"Dados gravados na Silver: "
+        f"{args.output}"
     )
 
     spark.stop()
