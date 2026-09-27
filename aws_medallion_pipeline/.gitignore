@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Pytest
+.pytest_cache/
+
+# Ruff
+.ruff_cache/
+
+# VS Code
+.vscode/
+
+# IDE
+.idea/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Local AWS credentials
+.aws/
+credentials
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Temporary files
+*.tmp
+*.log
+
+# Local data
+data/
+output/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Secrets
+secrets.json
+credentials.json
