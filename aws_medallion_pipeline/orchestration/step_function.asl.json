@@ -1,5 +1,5 @@
 {
-  "Comment": "Orquestracao do AWS Medallion Data Pipeline",
+  "Comment": "Orquestracao do AWS Medallion Data Pipeline com Data Quality Gate",
   "StartAt": "IngestApiToLanding",
   "States": {
     "IngestApiToLanding": {
@@ -16,7 +16,8 @@
           "ErrorEquals": [
             "Lambda.ServiceException",
             "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException"
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
           ],
           "IntervalSeconds": 5,
           "MaxAttempts": 3,
@@ -55,6 +56,16 @@
       },
       "ResultPath": "$.landing_to_raw",
       "Next": "RawToBronze",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -80,12 +91,23 @@
               "s3://REPLACE_DATA_BUCKET/raw/orders/",
               "--output",
               "s3://REPLACE_DATA_BUCKET/bronze/orders/"
-            ]
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
           }
         }
       },
       "ResultPath": "$.raw_to_bronze",
       "Next": "BronzeToSilver",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -111,12 +133,65 @@
               "s3://REPLACE_DATA_BUCKET/bronze/orders/",
               "--output",
               "s3://REPLACE_DATA_BUCKET/silver/orders/"
-            ]
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
           }
         }
       },
       "ResultPath": "$.bronze_to_silver",
+      "Next": "SilverDataQuality",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "SilverDataQuality": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/quality/data_quality_checks.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/silver/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/audit/data_quality/orders/"
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
+          }
+        }
+      },
+      "ResultPath": "$.silver_data_quality",
       "Next": "SilverToGold",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -142,12 +217,23 @@
               "s3://REPLACE_DATA_BUCKET/silver/orders/",
               "--output",
               "s3://REPLACE_DATA_BUCKET/gold/orders/"
-            ]
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
           }
         }
       },
       "ResultPath": "$.silver_to_gold",
       "Next": "GoldToDiamond",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -173,12 +259,23 @@
               "s3://REPLACE_DATA_BUCKET/gold/orders/",
               "--output",
               "s3://REPLACE_DATA_BUCKET/diamond/orders/"
-            ]
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
           }
         }
       },
       "ResultPath": "$.gold_to_diamond",
       "Next": "PipelineSucceeded",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
       "Catch": [
         {
           "ErrorEquals": [
@@ -197,7 +294,7 @@
     "PipelineFailed": {
       "Type": "Fail",
       "Error": "MedallionPipelineFailure",
-      "Cause": "Uma etapa do pipeline falhou"
+      "Cause": "Uma etapa do AWS Medallion Data Pipeline falhou"
     }
   }
 }
