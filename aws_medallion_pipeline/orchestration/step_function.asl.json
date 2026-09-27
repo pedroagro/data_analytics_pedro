@@ -1,0 +1,203 @@
+{
+  "Comment": "Orquestracao do AWS Medallion Data Pipeline",
+  "StartAt": "IngestApiToLanding",
+  "States": {
+    "IngestApiToLanding": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "REPLACE_LAMBDA_ARN",
+        "Payload.$": "$"
+      },
+      "ResultPath": "$.ingestion",
+      "Next": "LandingToRaw",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "LandingToRaw": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/jobs/landing_to_raw.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/landing/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/raw/orders/"
+            ],
+            "SparkSubmitParameters": "--conf spark.executor.cores=2 --conf spark.executor.memory=4g --conf spark.driver.memory=2g"
+          }
+        }
+      },
+      "ResultPath": "$.landing_to_raw",
+      "Next": "RawToBronze",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "RawToBronze": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/jobs/raw_to_bronze.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/raw/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/bronze/orders/"
+            ]
+          }
+        }
+      },
+      "ResultPath": "$.raw_to_bronze",
+      "Next": "BronzeToSilver",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "BronzeToSilver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/jobs/bronze_to_silver.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/bronze/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/silver/orders/"
+            ]
+          }
+        }
+      },
+      "ResultPath": "$.bronze_to_silver",
+      "Next": "SilverToGold",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "SilverToGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/jobs/silver_to_gold.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/silver/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/gold/orders/"
+            ]
+          }
+        }
+      },
+      "ResultPath": "$.silver_to_gold",
+      "Next": "GoldToDiamond",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "GoldToDiamond": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::elasticmapreduce-serverless:startJobRun.sync",
+      "Parameters": {
+        "ApplicationId": "REPLACE_EMR_SERVERLESS_APPLICATION_ID",
+        "ExecutionRoleArn": "REPLACE_EMR_EXECUTION_ROLE_ARN",
+        "JobDriver": {
+          "SparkSubmit": {
+            "EntryPoint": "s3://REPLACE_CODE_BUCKET/jobs/gold_to_diamond.py",
+            "EntryPointArguments": [
+              "--input",
+              "s3://REPLACE_DATA_BUCKET/gold/orders/",
+              "--output",
+              "s3://REPLACE_DATA_BUCKET/diamond/orders/"
+            ]
+          }
+        }
+      },
+      "ResultPath": "$.gold_to_diamond",
+      "Next": "PipelineSucceeded",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ]
+    },
+
+    "PipelineSucceeded": {
+      "Type": "Succeed"
+    },
+
+    "PipelineFailed": {
+      "Type": "Fail",
+      "Error": "MedallionPipelineFailure",
+      "Cause": "Uma etapa do pipeline falhou"
+    }
+  }
+}
