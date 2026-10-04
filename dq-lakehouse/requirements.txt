@@ -1,0 +1,6 @@
+pyspark==3.5.3
+pytest
+pytest-cov
+pyyaml
+python-dotenv
+delta-spark==3.2.0

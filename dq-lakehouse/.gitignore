@@ -1,0 +1,62 @@
+@"
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# PySpark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Databricks
+.databricks/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+
+# IDE
+.vscode/
+.idea/
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# Raw local data
+data/raw/*
+!data/raw/.gitkeep
+
+# Secrets
+*.pem
+*.key
+*.jks
+*.jceks
+"@ | Set-Content .gitignore -Encoding UTF8data/bronze/*
