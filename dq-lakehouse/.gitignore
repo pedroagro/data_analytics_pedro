@@ -60,3 +60,4 @@ data/raw/*
 *.jks
 *.jceks
 "@ | Set-Content .gitignore -Encoding UTF8data/bronze/*
+/data/bronze/
